@@ -210,7 +210,6 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 			parent.lastGasCharge = rt.lastGasCharge
 		}()
 	}
-
 	if gasCharge != nil {
 		if err := rt.chargeGasSafe(*gasCharge); err != nil {
 			// this should never happen
@@ -219,10 +218,7 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 	}
 
 	ret, err := func() ([]byte, aerrors.ActorError) {
-		if aerr := rt.chargeGasSafe(rt.Pricelist().OnMethodInvocation(msg.Value, msg.Method)); aerr != nil {
-			return nil, aerrors.Wrap(aerr, "not enough gas for method invocation")
-		}
-
+		_ = rt.chargeGasSafe(newGasCharge("OnGetActor", 0, 0))
 		toActor, err := st.GetActor(msg.To)
 		if err != nil {
 			if xerrors.Is(err, init_.ErrAddressNotFound) {
@@ -236,6 +232,11 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 			}
 		}
 
+		if aerr := rt.chargeGasSafe(rt.Pricelist().OnMethodInvocation(msg.Value, msg.Method)); aerr != nil {
+			return nil, aerrors.Wrap(aerr, "not enough gas for method invocation")
+		}
+		defer rt.chargeGasSafe(newGasCharge("OnMethodInvocationDone", 0, 0))
+
 		if types.BigCmp(msg.Value, types.NewInt(0)) != 0 {
 			if err := vm.transfer(msg.From, msg.To, msg.Value); err != nil {
 				return nil, aerrors.Wrap(err, "failed to transfer funds")
@@ -246,7 +247,6 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 			var ret []byte
 			_ = rt.chargeGasSafe(gasOnActorExec)
 			ret, err := vm.Invoke(toActor, rt, msg.Method, msg.Params)
-			_ = rt.chargeGasSafe(newGasCharge("OnActorExecDone", 0, 0))
 			return ret, err
 		}
 		return nil, nil
@@ -440,6 +440,9 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 			return nil, xerrors.Errorf("revert state failed: %w", err)
 		}
 	}
+
+	rt.finilizeGasTracing()
+
 	gasUsed = rt.gasUsed
 	if gasUsed < 0 {
 		gasUsed = 0
@@ -458,8 +461,6 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 	if types.BigCmp(types.NewInt(0), gasHolder.Balance) != 0 {
 		return nil, xerrors.Errorf("gas handling math is wrong")
 	}
-
-	rt.finilizeGasTracing()
 
 	return &ApplyRet{
 		MessageReceipt: types.MessageReceipt{
