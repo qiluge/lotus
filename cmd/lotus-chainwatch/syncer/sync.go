@@ -55,11 +55,13 @@ create table if not exists blocks_synced
 			primary key
 	    constraint blocks_block_cids_cid_fk
 			references block_cids (cid),
-	add_ts int not null
+	synced_at int not null,
+	processed_at int default 0,
+	is_processed bool default false
 );
 
 create unique index if not exists blocks_synced_cid_uindex
-	on blocks_synced (cid);
+	on blocks_synced (cid,is_processed);
 
 create table if not exists block_parents
 (
@@ -112,7 +114,7 @@ create table if not exists blocks
 );
 
 create unique index if not exists block_cid_uindex
-	on blocks (cid);
+	on blocks (cid,height);
 
 `); err != nil {
 		return err
@@ -172,7 +174,7 @@ func (s *Syncer) Start(ctx context.Context) {
 
 					lastSynced = time.Now()
 				case store.HCRevert:
-					log.Warnf("revert todo")
+					log.Debug("revert todo")
 				}
 
 				// TODO address this
@@ -191,7 +193,7 @@ func (s *Syncer) unsyncedBlocks(ctx context.Context, head *types.TipSet, since t
 	// get a list of blocks we have already synced in the past 3 mins. This ensures we aren't returning the entire
 	// table everytime.
 	lookback := since.Add(-(time.Minute * 3))
-	log.Infow("Gathering unsynced blocks", "since", lookback.String())
+	log.Debugw("Gathering unsynced blocks", "since", lookback.String())
 	hasList, err := s.syncedBlocks(lookback)
 	if err != nil {
 		return nil, err
@@ -231,13 +233,13 @@ func (s *Syncer) unsyncedBlocks(ctx context.Context, head *types.TipSet, since t
 			toVisit.PushBack(header)
 		}
 	}
-	log.Infow("Gathered unsynced blocks", "count", len(toSync))
+	log.Debugw("Gathered unsynced blocks", "count", len(toSync))
 	return toSync, nil
 }
 
 func (s *Syncer) syncedBlocks(timestamp time.Time) (map[cid.Cid]struct{}, error) {
 	// timestamp is used to return a configurable amount of rows based on when they were last added.
-	rws, err := s.db.Query(`select cid FROM blocks_synced where add_ts > $1`, timestamp.Unix())
+	rws, err := s.db.Query(`select cid FROM blocks_synced where synced_at > $1`, timestamp.Unix())
 	if err != nil {
 		return nil, xerrors.Errorf("Failed to query blocks_synced: %w", err)
 	}
@@ -265,7 +267,7 @@ func (s *Syncer) storeHeaders(bhs map[cid.Cid]*types.BlockHeader, sync bool, tim
 	if len(bhs) == 0 {
 		return nil
 	}
-	log.Infow("Storing Headers", "count", len(bhs))
+	log.Debugw("Storing Headers", "count", len(bhs))
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -378,13 +380,13 @@ create temp table b (like blocks excluding constraints) on commit drop;
 
 	if sync {
 
-		stmt, err := tx.Prepare(`copy bs (cid, add_ts) from stdin `)
+		stmt, err := tx.Prepare(`copy bs (cid, synced_at, processed_at, is_processed) from stdin `)
 		if err != nil {
 			return err
 		}
 
 		for _, bh := range bhs {
-			if _, err := stmt.Exec(bh.Cid().String(), timestamp.Unix()); err != nil {
+			if _, err := stmt.Exec(bh.Cid().String(), timestamp.Unix(), 0, false); err != nil {
 				log.Error(err)
 			}
 		}

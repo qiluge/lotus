@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/processor"
 	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/syncer"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,7 +26,7 @@ func main() {
 
 	local := []*cli.Command{
 		runCmd,
-		dotCmd,
+		//dotCmd,
 	}
 
 	app := &cli.App{
@@ -41,7 +42,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "db",
 				EnvVars: []string{"LOTUS_DB"},
-				Value:   "",
+				Value:   "postgres://postgres:password@192.168.168.10:5432/postgres?sslmode=disable",
 			},
 		},
 
@@ -82,7 +83,7 @@ var runCmd = &cli.Command{
 
 		log.Infof("Remote version: %s", v.Version)
 
-		//maxBatch := cctx.Int("max-batch")
+		maxBatch := cctx.Int("max-batch")
 
 		db, err := sql.Open("postgres", cctx.String("db"))
 		defer db.Close()
@@ -107,6 +108,9 @@ var runCmd = &cli.Command{
 
 		sync := syncer.NewSyncer(db, api)
 		sync.Start(ctx)
+
+		proc := processor.NewProcessor(db, api, maxBatch)
+		proc.Start(ctx)
 
 		go func() {
 			<-ctx.Done()
