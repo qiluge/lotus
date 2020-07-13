@@ -6,6 +6,8 @@ import (
 	_ "net/http/pprof"
 	"os"
 
+	"golang.org/x/xerrors"
+
 	"github.com/filecoin-project/lotus/build"
 	lcli "github.com/filecoin-project/lotus/cli"
 	logging "github.com/ipfs/go-log/v2"
@@ -86,7 +88,14 @@ var runCmd = &cli.Command{
 		maxBatch := cctx.Int("max-batch")
 
 		db, err := sql.Open("postgres", cctx.String("db"))
+		if err != nil {
+			return err
+		}
 		defer db.Close()
+
+		if err := db.Ping(); err != nil {
+			return xerrors.Errorf("Database failed to respond to ping (is it online?): %w", err)
+		}
 
 		sync := syncer.NewSyncer(db, api)
 		sync.Start(ctx)
