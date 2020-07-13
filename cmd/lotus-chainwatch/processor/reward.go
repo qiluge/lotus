@@ -13,7 +13,7 @@ import (
 )
 
 type rewardActorInfo struct {
-	common *actorInfo
+	common actorInfo
 
 	baselinePower big.Int
 }
@@ -121,7 +121,7 @@ func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTip
 	for tipset, rewards := range rewardTips {
 		for _, act := range rewards {
 			var rw rewardActorInfo
-			rw.common = &act
+			rw.common = act
 
 			// get reward actor states at each tipset once for all updates
 			rewardActor, err := p.node.StateGetActor(ctx, builtin.RewardActorAddr, tipset)

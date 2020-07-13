@@ -64,10 +64,6 @@ func (p *Processor) Start(ctx context.Context) {
 		log.Fatalw("Failed to setup processor", "error", err)
 	}
 
-	if err := p.setupMiners(); err != nil {
-		log.Fatalw("Failed to setup miners", "error", err)
-	}
-
 	go func() {
 		for {
 			toProcess, err := p.unprocessedBlocks(ctx, p.batch)
@@ -75,6 +71,7 @@ func (p *Processor) Start(ctx context.Context) {
 				log.Fatalw("Failed to get unprocessed blocks", "error", err)
 			}
 
+			// TODO wire up block sub and message sub
 			// TODO special case genesis state handling here to avoid all the special cases that will be needed for it else where
 			// before doing "normal" processing.
 
@@ -114,7 +111,6 @@ func (p *Processor) Start(ctx context.Context) {
 			if err := p.markBlocksProcessed(ctx, toProcess); err != nil {
 				log.Fatalw("Failed to mark blocks as processed", "error", err)
 			}
-			p.batch += p.batch
 		}
 	}()
 
@@ -148,6 +144,18 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 	var changes map[string]types.Actor
 	actorsSeen := map[cid.Cid]struct{}{}
 
+	// TODO consider using a sync.Map here to reduce lock contention
+	// sync.Map{}
+	/*
+		// The Map type is optimized for two common use cases: (1) when the entry for a given
+		// key is only ever written once but read many times, as in caches that only grow,
+		// or (2) when multiple goroutines read, write, and overwrite entries for disjoint
+		// sets of keys. In these two cases, use of a Map may significantly reduce lock
+		// contention compared to a Go map paired with a separate Mutex or RWMutex.
+
+		this feels like the first case
+	*/
+
 	// collect all actor state that has changes between block headers
 	paDone := 0
 	parmap.Par(50, parmap.MapArr(toProcess), func(bh *types.BlockHeader) {
@@ -173,6 +181,7 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 		// record the state of all actors that have changed
 		for a, act := range changes {
 			act := act
+			a := a
 
 			addr, err := address.NewFromString(a)
 			if err != nil {

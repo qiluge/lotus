@@ -26,7 +26,6 @@ func main() {
 
 	local := []*cli.Command{
 		runCmd,
-		//dotCmd,
 	}
 
 	app := &cli.App{
@@ -42,7 +41,7 @@ func main() {
 			&cli.StringFlag{
 				Name:    "db",
 				EnvVars: []string{"LOTUS_DB"},
-				Value:   "postgres://postgres:password@192.168.168.10:5432/postgres?sslmode=disable",
+				Value:   "",
 			},
 		},
 
@@ -87,24 +86,6 @@ var runCmd = &cli.Command{
 
 		db, err := sql.Open("postgres", cctx.String("db"))
 		defer db.Close()
-		/*
-			st, err := openStorage(cctx.String("db"))
-			if err != nil {
-				return err
-			}
-			defer st.close() //nolint:errcheck
-
-				runSyncer(ctx, api, st, maxBatch)
-
-				h, err := newHandler(api, st)
-				if err != nil {
-					return xerrors.Errorf("handler setup: %w", err)
-				}
-
-				http.Handle("/", h)
-
-				fmt.Printf("Open http://%s\n", cctx.String("front"))
-		*/
 
 		sync := syncer.NewSyncer(db, api)
 		sync.Start(ctx)
