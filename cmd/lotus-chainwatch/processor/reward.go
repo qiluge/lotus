@@ -56,6 +56,42 @@ func (p *Processor) HandleRewardChanges(ctx context.Context, rewardTips ActorTip
 	return nil
 }
 
+func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTips) (out []rewardActorInfo, err error) {
+	start := time.Now()
+	defer func() {
+		if err == nil {
+			log.Infow("Processed Reward Actors", "duration", time.Since(start).String())
+		}
+	}()
+
+	for tipset, rewards := range rewardTips {
+		for _, act := range rewards {
+			var rw rewardActorInfo
+			rw.common = act
+
+			// get reward actor states at each tipset once for all updates
+			rewardActor, err := p.node.StateGetActor(ctx, builtin.RewardActorAddr, tipset)
+			if err != nil {
+				return nil, xerrors.Errorf("get reward state (@ %s): %w", rw.common.stateroot.String(), err)
+			}
+
+			rewardStateRaw, err := p.node.ChainReadObj(ctx, rewardActor.Head)
+			if err != nil {
+				return nil, xerrors.Errorf("read state obj (@ %s): %w", rw.common.stateroot.String(), err)
+			}
+
+			var rewardActorState reward.State
+			if err := rewardActorState.UnmarshalCBOR(bytes.NewReader(rewardStateRaw)); err != nil {
+				return nil, xerrors.Errorf("unmarshal state (@ %s): %w", rw.common.stateroot.String(), err)
+			}
+
+			rw.baselinePower = rewardActorState.BaselinePower
+			out = append(out, rw)
+		}
+	}
+	return out, nil
+}
+
 func (p *Processor) persistRewardActors(ctx context.Context, rewards []rewardActorInfo) (err error) {
 	start := time.Now()
 	defer func() {
@@ -108,40 +144,4 @@ func (p *Processor) storeChainPower(rewards []rewardActorInfo) (err error) {
 	}
 
 	return nil
-}
-
-func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTips) (out []rewardActorInfo, err error) {
-	start := time.Now()
-	defer func() {
-		if err == nil {
-			log.Infow("Processed Reward Actors", "duration", time.Since(start).String())
-		}
-	}()
-
-	for tipset, rewards := range rewardTips {
-		for _, act := range rewards {
-			var rw rewardActorInfo
-			rw.common = act
-
-			// get reward actor states at each tipset once for all updates
-			rewardActor, err := p.node.StateGetActor(ctx, builtin.RewardActorAddr, tipset)
-			if err != nil {
-				return nil, xerrors.Errorf("get reward state (@ %s): %w", rw.common.stateroot.String(), err)
-			}
-
-			rewardStateRaw, err := p.node.ChainReadObj(ctx, rewardActor.Head)
-			if err != nil {
-				return nil, xerrors.Errorf("read state obj (@ %s): %w", rw.common.stateroot.String(), err)
-			}
-
-			var rewardActorState reward.State
-			if err := rewardActorState.UnmarshalCBOR(bytes.NewReader(rewardStateRaw)); err != nil {
-				return nil, xerrors.Errorf("unmarshal state (@ %s): %w", rw.common.stateroot.String(), err)
-			}
-
-			rw.baselinePower = rewardActorState.BaselinePower
-			out = append(out, rw)
-		}
-	}
-	return out, nil
 }

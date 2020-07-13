@@ -4,15 +4,17 @@ import (
 	"container/list"
 	"context"
 	"database/sql"
-	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/chain/store"
-	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/ipfs/go-cid"
-	"golang.org/x/xerrors"
 	"sync"
 	"time"
 
+	"golang.org/x/xerrors"
+
+	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+
+	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/chain/store"
+	"github.com/filecoin-project/lotus/chain/types"
 )
 
 var log = logging.Logger("syncer")
@@ -116,6 +118,14 @@ create table if not exists blocks
 create unique index if not exists block_cid_uindex
 	on blocks (cid,height);
 
+create materialized view if not exists state_heights
+    as select distinct height, parentstateroot from blocks;
+
+create index if not exists state_heights_index
+	on state_heights (height);
+
+create index if not exists state_heights_height_index
+	on state_heights (parentstateroot);
 `); err != nil {
 		return err
 	}
@@ -176,14 +186,6 @@ func (s *Syncer) Start(ctx context.Context) {
 				case store.HCRevert:
 					log.Debug("revert todo")
 				}
-
-				// TODO address this
-				/*
-					if change.Type == store.HCCurrent {
-						go subMpool(ctx, api, st)
-						go subBlocks(ctx, api, st)
-					}
-				*/
 			}
 		}
 	}()
@@ -191,7 +193,7 @@ func (s *Syncer) Start(ctx context.Context) {
 
 func (s *Syncer) unsyncedBlocks(ctx context.Context, head *types.TipSet, since time.Time) (map[cid.Cid]*types.BlockHeader, error) {
 	// get a list of blocks we have already synced in the past 3 mins. This ensures we aren't returning the entire
-	// table everytime.
+	// table every time.
 	lookback := since.Add(-(time.Minute * 3))
 	log.Debugw("Gathering unsynced blocks", "since", lookback.String())
 	hasList, err := s.syncedBlocks(lookback)

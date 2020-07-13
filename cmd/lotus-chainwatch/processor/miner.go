@@ -160,6 +160,54 @@ func (p *Processor) HandleMinerChanges(ctx context.Context, minerTips ActorTips)
 	return nil
 }
 
+func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSetKey][]actorInfo) (out []minerActorInfo, err error) {
+	start := time.Now()
+	defer func() {
+		if err == nil {
+			log.Infow("Processed Miners", "duration", time.Since(start).String())
+		}
+	}()
+
+	// TODO add parallel calls if this becomes slow
+	for tipset, miners := range minerTips {
+		// get the power actors claims map
+		minersClaims, err := getPowerActorClaimsMap(ctx, p.node, tipset)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get miner raw and quality power
+		for _, act := range miners {
+			var mi minerActorInfo
+			mi.common = act
+
+			var claim power.Claim
+			// get miner claim from power actors claim map and store if found, else the miner had no claim at
+			// this tipset
+			found, err := minersClaims.Get(adt.AddrKey(act.addr), &claim)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				mi.qalPower = claim.QualityAdjPower
+				mi.rawPower = claim.RawBytePower
+			}
+
+			// Get the miner state info
+			astb, err := p.node.ChainReadObj(ctx, act.act.Head)
+			if err != nil {
+				log.Warnw("failed to find miner actor state", "address", act.addr, "error", err)
+				continue
+			}
+			if err := mi.state.UnmarshalCBOR(bytes.NewReader(astb)); err != nil {
+				return nil, err
+			}
+			out = append(out, mi)
+		}
+	}
+	return out, nil
+}
+
 func (p *Processor) persistMiners(ctx context.Context, miners []minerActorInfo) (err error) {
 	start := time.Now()
 	defer func() {
@@ -199,14 +247,6 @@ func (p *Processor) persistMiners(ctx context.Context, miners []minerActorInfo) 
 	})
 
 	return grp.Wait()
-}
-
-func (p *Processor) updateMiners(ctx context.Context, miners []minerActorInfo) error {
-	// TODO when/if there is more than one update operation here use an errgroup as is done in persistMiners
-	if err := p.updateMinersSectors(ctx, miners); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (p *Processor) storeMinersActorState(miners []minerActorInfo) (err error) {
@@ -424,6 +464,14 @@ func (p *Processor) storeMinersSectorHeads(miners []minerActorInfo) (err error) 
 	return tx.Commit()
 }
 
+func (p *Processor) updateMiners(ctx context.Context, miners []minerActorInfo) error {
+	// TODO when/if there is more than one update operation here use an errgroup as is done in persistMiners
+	if err := p.updateMinersSectors(ctx, miners); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (p *Processor) updateMinersSectors(ctx context.Context, miners []minerActorInfo) (err error) {
 	log.Infow("Updating Miners Sectors", "#miners", len(miners))
 	start := time.Now()
@@ -583,54 +631,6 @@ func (p *Processor) updateMinersSectors(ctx context.Context, miners []minerActor
 	}
 
 	return updateTx.Commit()
-}
-
-func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSetKey][]actorInfo) (out []minerActorInfo, err error) {
-	start := time.Now()
-	defer func() {
-		if err == nil {
-			log.Infow("Processed Miners", "duration", time.Since(start).String())
-		}
-	}()
-
-	// TODO add parallel calls if this becomes slow
-	for tipset, miners := range minerTips {
-		// get the power actors claims map
-		minersClaims, err := getPowerActorClaimsMap(ctx, p.node, tipset)
-		if err != nil {
-			return nil, err
-		}
-
-		// Get miner raw and quality power
-		for _, act := range miners {
-			var mi minerActorInfo
-			mi.common = act
-
-			var claim power.Claim
-			// get miner claim from power actors claim map and store if found, else the miner had no claim at
-			// this tipset
-			found, err := minersClaims.Get(adt.AddrKey(act.addr), &claim)
-			if err != nil {
-				return nil, err
-			}
-			if found {
-				mi.qalPower = claim.QualityAdjPower
-				mi.rawPower = claim.RawBytePower
-			}
-
-			// Get the miner state info
-			astb, err := p.node.ChainReadObj(ctx, act.act.Head)
-			if err != nil {
-				log.Warnw("failed to find miner actor state", "address", act.addr, "error", err)
-				continue
-			}
-			if err := mi.state.UnmarshalCBOR(bytes.NewReader(astb)); err != nil {
-				return nil, err
-			}
-			out = append(out, mi)
-		}
-	}
-	return out, nil
 }
 
 // load the power actor state clam as an adt.Map at the tipset `ts`.

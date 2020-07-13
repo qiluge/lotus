@@ -2,8 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/processor"
-	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/syncer"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -12,6 +10,9 @@ import (
 	lcli "github.com/filecoin-project/lotus/cli"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/urfave/cli/v2"
+
+	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/processor"
+	"github.com/filecoin-project/lotus/cmd/lotus-chainwatch/syncer"
 )
 
 var log = logging.Logger("chainwatch")

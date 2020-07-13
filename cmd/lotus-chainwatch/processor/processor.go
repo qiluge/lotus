@@ -4,21 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/filecoin-project/lotus/lib/parmap"
-	"github.com/filecoin-project/specs-actors/actors/abi"
-	"github.com/filecoin-project/specs-actors/actors/builtin"
-	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/go-address"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 
-	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/specs-actors/actors/abi"
+	"github.com/filecoin-project/specs-actors/actors/builtin"
+
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/lib/parmap"
 )
 
 var log = logging.Logger("processor")
@@ -28,10 +29,24 @@ type Processor struct {
 
 	node api.FullNode
 
+	// number of blocks processed at a time
 	batch int
 }
 
 type ActorTips map[types.TipSetKey][]actorInfo
+
+type actorInfo struct {
+	act types.Actor
+
+	stateroot cid.Cid
+	height    abi.ChainEpoch // so that we can walk the actor changes in chronological order.
+
+	tsKey       types.TipSetKey
+	parentTsKey types.TipSetKey
+
+	addr  address.Address
+	state string
+}
 
 func NewProcessor(db *sql.DB, node api.FullNode, batch int) *Processor {
 	return &Processor{
@@ -64,6 +79,9 @@ func (p *Processor) Start(ctx context.Context) {
 		log.Fatalw("Failed to setup processor", "error", err)
 	}
 
+	go p.subMpool(ctx)
+
+	// main processor loop
 	go func() {
 		for {
 			toProcess, err := p.unprocessedBlocks(ctx, p.batch)
@@ -71,7 +89,6 @@ func (p *Processor) Start(ctx context.Context) {
 				log.Fatalw("Failed to get unprocessed blocks", "error", err)
 			}
 
-			// TODO wire up block sub and message sub
 			// TODO special case genesis state handling here to avoid all the special cases that will be needed for it else where
 			// before doing "normal" processing.
 
@@ -111,22 +128,21 @@ func (p *Processor) Start(ctx context.Context) {
 			if err := p.markBlocksProcessed(ctx, toProcess); err != nil {
 				log.Fatalw("Failed to mark blocks as processed", "error", err)
 			}
+
+			if err := p.refreshViews(); err != nil {
+				log.Errorw("Failed to refresh views", "error", err)
+			}
 		}
 	}()
 
 }
 
-type actorInfo struct {
-	act types.Actor
+func (p *Processor) refreshViews() error {
+	if _, err := p.db.Exec(`refresh materialized view state_heights`); err != nil {
+		return err
+	}
 
-	stateroot cid.Cid
-	height    abi.ChainEpoch // so that we can walk the actor changes in chronological order.
-
-	tsKey       types.TipSetKey
-	parentTsKey types.TipSetKey
-
-	addr  address.Address
-	state string
+	return nil
 }
 
 func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.Cid]*types.BlockHeader) (_ map[cid.Cid]ActorTips, err error) {
@@ -144,22 +160,9 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 	var changes map[string]types.Actor
 	actorsSeen := map[cid.Cid]struct{}{}
 
-	// TODO consider using a sync.Map here to reduce lock contention
-	// sync.Map{}
-	/*
-		// The Map type is optimized for two common use cases: (1) when the entry for a given
-		// key is only ever written once but read many times, as in caches that only grow,
-		// or (2) when multiple goroutines read, write, and overwrite entries for disjoint
-		// sets of keys. In these two cases, use of a Map may significantly reduce lock
-		// contention compared to a Go map paired with a separate Mutex or RWMutex.
-
-		this feels like the first case
-	*/
-
 	// collect all actor state that has changes between block headers
 	paDone := 0
 	parmap.Par(50, parmap.MapArr(toProcess), func(bh *types.BlockHeader) {
-		//for _, bh := range toProcess {
 		paDone++
 		if paDone%100 == 0 {
 			log.Infow("Collecting actor changes", "done", paDone, "percent", (paDone*100)/len(toProcess))

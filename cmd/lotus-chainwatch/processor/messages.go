@@ -2,13 +2,16 @@ package processor
 
 import (
 	"context"
-	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/lib/parmap"
-	"github.com/ipfs/go-cid"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/xerrors"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/xerrors"
+
+	"github.com/ipfs/go-cid"
+
+	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/lib/parmap"
 )
 
 func (p *Processor) setupMessages() error {
@@ -127,10 +130,7 @@ func (p *Processor) storeReceipts(recs map[mrec]*types.MessageReceipt) (err erro
 	}
 
 	if _, err := tx.Exec(`
-
 create temp table recs (like receipts excluding constraints) on commit drop;
-
-
 `); err != nil {
 		return xerrors.Errorf("prep temp: %w", err)
 	}
@@ -214,7 +214,7 @@ func (p *Processor) storeMessages(msgs map[cid.Cid]*types.Message) (err error) {
 	start := time.Now()
 	defer func() {
 		if err == nil {
-			log.Infow("Persisted Messages", "duration", time.Since(start).String())
+			log.Debugw("Persisted Messages", "duration", time.Since(start).String())
 		}
 	}()
 	tx, err := p.db.Begin()
