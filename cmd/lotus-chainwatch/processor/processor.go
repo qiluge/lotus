@@ -7,6 +7,7 @@ import (
 	"github.com/filecoin-project/lotus/lib/parmap"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
+	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
 
@@ -30,12 +31,30 @@ type Processor struct {
 	batch int
 }
 
+type ActorTips map[types.TipSetKey][]actorInfo
+
 func NewProcessor(db *sql.DB, node api.FullNode, batch int) *Processor {
 	return &Processor{
 		db:    db,
 		node:  node,
 		batch: batch,
 	}
+}
+
+func (p *Processor) setup() error {
+	if err := p.setupMiners(); err != nil {
+		return err
+	}
+
+	if err := p.setupRewards(); err != nil {
+		return err
+	}
+
+	if err := p.setupMessages(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *Processor) Start(ctx context.Context) {
@@ -64,14 +83,38 @@ func (p *Processor) Start(ctx context.Context) {
 				log.Fatalw("Failed to collect actor changes", "error", err)
 			}
 
-			if err := p.HandleMinerChanges(ctx, actorChanges[builtin.StorageMinerActorCodeID]); err != nil {
-				log.Fatalw("Failed to handle miner changes", "error", err)
+			grp, ctx := errgroup.WithContext(ctx)
+
+			grp.Go(func() error {
+				if err := p.HandleMinerChanges(ctx, actorChanges[builtin.StorageMinerActorCodeID]); err != nil {
+					return xerrors.Errorf("Failed to handle miner changes: %w", err)
+				}
+				return nil
+			})
+
+			grp.Go(func() error {
+				if err := p.HandleRewardChanges(ctx, actorChanges[builtin.RewardActorCodeID]); err != nil {
+					return xerrors.Errorf("Failed to handle reward changes: %w", err)
+				}
+				return nil
+			})
+
+			grp.Go(func() error {
+				if err := p.HandleMessageChanges(ctx, toProcess); err != nil {
+					return xerrors.Errorf("Failed to handle message changes: %w", err)
+				}
+				return nil
+			})
+
+			if err := grp.Wait(); err != nil {
+				log.Errorw("Failed to handle actor changes...retrying", "error", err)
+				continue
 			}
 
 			if err := p.markBlocksProcessed(ctx, toProcess); err != nil {
 				log.Fatalw("Failed to mark blocks as processed", "error", err)
 			}
-			p.batch += 10
+			p.batch += p.batch
 		}
 	}()
 
@@ -90,7 +133,7 @@ type actorInfo struct {
 	state string
 }
 
-func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.Cid]*types.BlockHeader) (_ map[cid.Cid]map[types.TipSetKey][]actorInfo, err error) {
+func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.Cid]*types.BlockHeader) (_ map[cid.Cid]ActorTips, err error) {
 	start := time.Now()
 	defer func() {
 		if err == nil {
@@ -98,7 +141,7 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 		}
 	}()
 	// ActorCode - > tipset->[]actorInfo
-	out := map[cid.Cid]map[types.TipSetKey][]actorInfo{}
+	out := map[cid.Cid]ActorTips{}
 	var outMu sync.Mutex
 
 	// map of addresses to changed actors
@@ -107,7 +150,6 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 
 	// collect all actor state that has changes between block headers
 	paDone := 0
-	// TODO enable parallelism later
 	parmap.Par(50, parmap.MapArr(toProcess), func(bh *types.BlockHeader) {
 		//for _, bh := range toProcess {
 		paDone++
@@ -170,10 +212,6 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 		}
 	})
 	return out, nil
-}
-
-func (p *Processor) setup() error {
-	return nil
 }
 
 func (p *Processor) unprocessedBlocks(ctx context.Context, batch int) (_ map[cid.Cid]*types.BlockHeader, err error) {

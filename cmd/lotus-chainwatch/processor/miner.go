@@ -141,7 +141,7 @@ type sectorUpdate struct {
 	minerID  address.Address
 }
 
-func (p *Processor) HandleMinerChanges(ctx context.Context, minerTips map[types.TipSetKey][]actorInfo) error {
+func (p *Processor) HandleMinerChanges(ctx context.Context, minerTips ActorTips) error {
 	minerChanges, err := p.processMiners(ctx, minerTips)
 	if err != nil {
 		log.Fatalw("Failed to process miner actors", "error", err)
@@ -556,10 +556,10 @@ func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSe
 
 		// Get miner raw and quality power
 		for _, act := range miners {
-
 			var mi minerActorInfo
-			var claim power.Claim
+			mi.common = &act
 
+			var claim power.Claim
 			// get miner claim from power actors claim map and store if found, else the miner had no claim at
 			// this tipset
 			found, err := minersClaims.Get(adt.AddrKey(act.addr), &claim)
@@ -580,7 +580,6 @@ func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSe
 			if err := mi.state.UnmarshalCBOR(bytes.NewReader(astb)); err != nil {
 				return nil, err
 			}
-			mi.common = &act
 			out = append(out, mi)
 		}
 	}
