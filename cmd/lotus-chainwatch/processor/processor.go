@@ -69,6 +69,10 @@ func (p *Processor) setup() error {
 		return err
 	}
 
+	if err := p.setupCommonActors(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -116,6 +120,13 @@ func (p *Processor) Start(ctx context.Context) {
 			grp.Go(func() error {
 				if err := p.HandleMessageChanges(ctx, toProcess); err != nil {
 					return xerrors.Errorf("Failed to handle message changes: %w", err)
+				}
+				return nil
+			})
+
+			grp.Go(func() error {
+				if err := p.HandleCommonActorsChanges(ctx, actorChanges); err != nil {
+					return xerrors.Errorf("Failed to handle common actor changes: %w", err)
 				}
 				return nil
 			})
