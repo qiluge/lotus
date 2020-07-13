@@ -56,14 +56,13 @@ func (p *Processor) HandleRewardChanges(ctx context.Context, rewardTips ActorTip
 	return nil
 }
 
-func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTips) (out []rewardActorInfo, err error) {
+func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTips) ([]rewardActorInfo, error) {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Processed Reward Actors", "duration", time.Since(start).String())
-		}
+		log.Infow("Processed Reward Actors", "duration", time.Since(start).String())
 	}()
 
+	var out []rewardActorInfo
 	for tipset, rewards := range rewardTips {
 		for _, act := range rewards {
 			var rw rewardActorInfo
@@ -92,12 +91,10 @@ func (p *Processor) processRewardActors(ctx context.Context, rewardTips ActorTip
 	return out, nil
 }
 
-func (p *Processor) persistRewardActors(ctx context.Context, rewards []rewardActorInfo) (err error) {
+func (p *Processor) persistRewardActors(ctx context.Context, rewards []rewardActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Persisted Reward Actors", "duration", time.Since(start).String())
-		}
+		log.Infow("Persisted Reward Actors", "duration", time.Since(start).String())
 	}()
 
 	if err := p.storeChainPower(rewards); err != nil {
@@ -107,7 +104,7 @@ func (p *Processor) persistRewardActors(ctx context.Context, rewards []rewardAct
 	return nil
 }
 
-func (p *Processor) storeChainPower(rewards []rewardActorInfo) (err error) {
+func (p *Processor) storeChainPower(rewards []rewardActorInfo) error {
 	tx, err := p.db.Begin()
 	if err != nil {
 		return xerrors.Errorf("begin chain_power tx: %w", err)

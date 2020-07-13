@@ -117,12 +117,10 @@ func (p *Processor) persistMessagesAndReceipts(ctx context.Context, blocks map[c
 	return grp.Wait()
 }
 
-func (p *Processor) storeReceipts(recs map[mrec]*types.MessageReceipt) (err error) {
+func (p *Processor) storeReceipts(recs map[mrec]*types.MessageReceipt) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Persisted Receipts", "duration", time.Since(start).String())
-		}
+		log.Infow("Persisted Receipts", "duration", time.Since(start).String())
 	}()
 	tx, err := p.db.Begin()
 	if err != nil {
@@ -163,12 +161,10 @@ create temp table recs (like receipts excluding constraints) on commit drop;
 	return tx.Commit()
 }
 
-func (p *Processor) storeMsgInclusions(incls map[cid.Cid][]cid.Cid) (err error) {
+func (p *Processor) storeMsgInclusions(incls map[cid.Cid][]cid.Cid) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Persisted Message Inclusions", "duration", time.Since(start).String())
-		}
+		log.Infow("Persisted Message Inclusions", "duration", time.Since(start).String())
 	}()
 	tx, err := p.db.Begin()
 	if err != nil {
@@ -210,12 +206,10 @@ create temp table mi (like block_messages excluding constraints) on commit drop;
 	return tx.Commit()
 }
 
-func (p *Processor) storeMessages(msgs map[cid.Cid]*types.Message) (err error) {
+func (p *Processor) storeMessages(msgs map[cid.Cid]*types.Message) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Debugw("Persisted Messages", "duration", time.Since(start).String())
-		}
+		log.Debugw("Persisted Messages", "duration", time.Since(start).String())
 	}()
 	tx, err := p.db.Begin()
 	if err != nil {

@@ -160,14 +160,13 @@ func (p *Processor) HandleMinerChanges(ctx context.Context, minerTips ActorTips)
 	return nil
 }
 
-func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSetKey][]actorInfo) (out []minerActorInfo, err error) {
+func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSetKey][]actorInfo) ([]minerActorInfo, error) {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Processed Miners", "duration", time.Since(start).String())
-		}
+		log.Infow("Processed Miners", "duration", time.Since(start).String())
 	}()
 
+	var out []minerActorInfo
 	// TODO add parallel calls if this becomes slow
 	for tipset, miners := range minerTips {
 		// get the power actors claims map
@@ -208,12 +207,10 @@ func (p *Processor) processMiners(ctx context.Context, minerTips map[types.TipSe
 	return out, nil
 }
 
-func (p *Processor) persistMiners(ctx context.Context, miners []minerActorInfo) (err error) {
+func (p *Processor) persistMiners(ctx context.Context, miners []minerActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Persisted Miners", "duration", time.Since(start).String())
-		}
+		log.Infow("Persisted Miners", "duration", time.Since(start).String())
 	}()
 
 	grp, ctx := errgroup.WithContext(ctx)
@@ -249,12 +246,10 @@ func (p *Processor) persistMiners(ctx context.Context, miners []minerActorInfo) 
 	return grp.Wait()
 }
 
-func (p *Processor) storeMinersActorState(miners []minerActorInfo) (err error) {
+func (p *Processor) storeMinersActorState(miners []minerActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Miners Actor State", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Miners Actor State", "duration", time.Since(start).String())
 	}()
 
 	tx, err := p.db.Begin()
@@ -307,12 +302,10 @@ func (p *Processor) storeMinersActorState(miners []minerActorInfo) (err error) {
 	return tx.Commit()
 }
 
-func (p *Processor) storeMinersPower(miners []minerActorInfo) (err error) {
+func (p *Processor) storeMinersPower(miners []minerActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Miners Power", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Miners Power", "duration", time.Since(start).String())
 	}()
 
 	tx, err := p.db.Begin()
@@ -356,12 +349,10 @@ func (p *Processor) storeMinersPower(miners []minerActorInfo) (err error) {
 
 }
 
-func (p *Processor) storeMinersSectorState(miners []minerActorInfo) (err error) {
+func (p *Processor) storeMinersSectorState(miners []minerActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Miners Sector State", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Miners Sector State", "duration", time.Since(start).String())
 	}()
 
 	tx, err := p.db.Begin()
@@ -420,12 +411,10 @@ func (p *Processor) storeMinersSectorState(miners []minerActorInfo) (err error) 
 	return tx.Commit()
 }
 
-func (p *Processor) storeMinersSectorHeads(miners []minerActorInfo) (err error) {
+func (p *Processor) storeMinersSectorHeads(miners []minerActorInfo) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Miners Sector Heads", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Miners Sector Heads", "duration", time.Since(start).String())
 	}()
 
 	tx, err := p.db.Begin()
@@ -472,13 +461,11 @@ func (p *Processor) updateMiners(ctx context.Context, miners []minerActorInfo) e
 	return nil
 }
 
-func (p *Processor) updateMinersSectors(ctx context.Context, miners []minerActorInfo) (err error) {
+func (p *Processor) updateMinersSectors(ctx context.Context, miners []minerActorInfo) error {
 	log.Infow("Updating Miners Sectors", "#miners", len(miners))
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Updated Miners Sectors", "duration", time.Since(start).String())
-		}
+		log.Infow("Updated Miners Sectors", "duration", time.Since(start).String())
 	}()
 
 	pred := state.NewStatePredicates(p.node)

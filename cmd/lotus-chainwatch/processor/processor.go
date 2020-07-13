@@ -56,7 +56,7 @@ func NewProcessor(db *sql.DB, node api.FullNode, batch int) *Processor {
 	}
 }
 
-func (p *Processor) setup() error {
+func (p *Processor) setupSchemas() error {
 	if err := p.setupMiners(); err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (p *Processor) setup() error {
 func (p *Processor) Start(ctx context.Context) {
 	log.Info("Starting Processor")
 
-	if err := p.setup(); err != nil {
+	if err := p.setupSchemas(); err != nil {
 		log.Fatalw("Failed to setup processor", "error", err)
 	}
 
@@ -156,12 +156,10 @@ func (p *Processor) refreshViews() error {
 	return nil
 }
 
-func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.Cid]*types.BlockHeader) (_ map[cid.Cid]ActorTips, err error) {
+func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.Cid]*types.BlockHeader) (map[cid.Cid]ActorTips, error) {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Collected Actor Changes", "duration", time.Since(start).String())
-		}
+		log.Infow("Collected Actor Changes", "duration", time.Since(start).String())
 	}()
 	// ActorCode - > tipset->[]actorInfo
 	out := map[cid.Cid]ActorTips{}
@@ -237,14 +235,12 @@ func (p *Processor) collectActorChanges(ctx context.Context, toProcess map[cid.C
 	return out, nil
 }
 
-func (p *Processor) unprocessedBlocks(ctx context.Context, batch int) (_ map[cid.Cid]*types.BlockHeader, err error) {
+func (p *Processor) unprocessedBlocks(ctx context.Context, batch int) (map[cid.Cid]*types.BlockHeader, error) {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Gathered Blocks to process", "duration", time.Since(start).String())
-		}
+		log.Infow("Gathered Blocks to process", "duration", time.Since(start).String())
 	}()
-	rws, err := p.db.Query(`
+	rows, err := p.db.Query(`
 with toProcess as (
     select blocks.cid, blocks.height, rank() over (order by height) as rnk
     from blocks
@@ -261,9 +257,12 @@ where rnk <= $1
 	out := map[cid.Cid]*types.BlockHeader{}
 
 	// TODO consider parallel execution here for getting the blocks from the api as is done in fetchMessages()
-	for rws.Next() {
+	for rows.Next() {
+		if rows.Err() != nil {
+			return nil, err
+		}
 		var c string
-		if err := rws.Scan(&c); err != nil {
+		if err := rows.Scan(&c); err != nil {
 			return nil, xerrors.Errorf("Failed to scan unprocessed blocks: %w", err)
 		}
 		ci, err := cid.Parse(c)
@@ -277,15 +276,13 @@ where rnk <= $1
 		}
 		out[ci] = bh
 	}
-	return out, nil
+	return out, rows.Close()
 }
 
-func (p *Processor) markBlocksProcessed(ctx context.Context, processed map[cid.Cid]*types.BlockHeader) (err error) {
+func (p *Processor) markBlocksProcessed(ctx context.Context, processed map[cid.Cid]*types.BlockHeader) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Marked blocks as Processed", "duration", time.Since(start).String())
-		}
+		log.Infow("Marked blocks as Processed", "duration", time.Since(start).String())
 	}()
 	tx, err := p.db.Begin()
 	if err != nil {

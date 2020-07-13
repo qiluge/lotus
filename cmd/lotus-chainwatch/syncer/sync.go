@@ -33,7 +33,7 @@ func NewSyncer(db *sql.DB, node api.FullNode) *Syncer {
 	}
 }
 
-func (s *Syncer) setup() error {
+func (s *Syncer) setupSchemas() error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ create index if not exists state_heights_height_index
 func (s *Syncer) Start(ctx context.Context) {
 	log.Info("Starting Syncer")
 
-	if err := s.setup(); err != nil {
+	if err := s.setupSchemas(); err != nil {
 		log.Fatal(err)
 	}
 

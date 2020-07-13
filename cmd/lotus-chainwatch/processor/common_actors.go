@@ -125,12 +125,10 @@ func (p *Processor) HandleCommonActorsChanges(ctx context.Context, actors map[ci
 	return grp.Wait()
 }
 
-func (p Processor) storeActorAddresses(ctx context.Context, actors map[cid.Cid]ActorTips) (err error) {
+func (p Processor) storeActorAddresses(ctx context.Context, actors map[cid.Cid]ActorTips) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Actor Addresses", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Actor Addresses", "duration", time.Since(start).String())
 	}()
 
 	addressToID := map[address.Address]address.Address{}
@@ -219,12 +217,10 @@ create temp table iam (like id_address_map excluding constraints) on commit drop
 	return tx.Commit()
 }
 
-func (p *Processor) storeActorHeads(actors map[cid.Cid]ActorTips) (err error) {
+func (p *Processor) storeActorHeads(actors map[cid.Cid]ActorTips) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Actor Heads", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Actor Heads", "duration", time.Since(start).String())
 	}()
 	// Basic
 	tx, err := p.db.Begin()
@@ -263,12 +259,10 @@ func (p *Processor) storeActorHeads(actors map[cid.Cid]ActorTips) (err error) {
 	return tx.Commit()
 }
 
-func (p *Processor) storeActorStates(actors map[cid.Cid]ActorTips) (err error) {
+func (p *Processor) storeActorStates(actors map[cid.Cid]ActorTips) error {
 	start := time.Now()
 	defer func() {
-		if err == nil {
-			log.Infow("Stored Actor States", "duration", time.Since(start).String())
-		}
+		log.Infow("Stored Actor States", "duration", time.Since(start).String())
 	}()
 	// States
 	tx, err := p.db.Begin()
